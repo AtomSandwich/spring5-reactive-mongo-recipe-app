@@ -5,13 +5,26 @@ import guru.springframework.converters.RecipeCommandToRecipe;
 import guru.springframework.converters.RecipeToRecipeCommand;
 import guru.springframework.domain.Recipe;
 import guru.springframework.repositories.RecipeRepository;
+import guru.springframework.repositories.reactive.RecipeReactiveRepository;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
+
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.junit4.SpringRunner;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.mockito.Mockito.*;
+
+import java.util.HashSet;
+import java.util.List;
+
+import org.junit.Before;
 
 
 /**
@@ -22,36 +35,86 @@ import static org.junit.Assert.assertEquals;
 @SpringBootTest
 public class RecipeServiceIT {
 
-    public static final String NEW_DESCRIPTION = "New Description";
+    RecipeServiceImpl recipeService;
 
-    @Autowired
-    RecipeService recipeService;
+    @Mock
+    RecipeReactiveRepository recipeReactiveRepository;
 
-    @Autowired
-    RecipeRepository recipeRepository;
-
-    @Autowired
-    RecipeCommandToRecipe recipeCommandToRecipe;
-
-    @Autowired
+    @Mock
     RecipeToRecipeCommand recipeToRecipeCommand;
 
-  //  @Transactional
+    @Mock
+    RecipeCommandToRecipe recipeCommandToRecipe;
+
+    @Before
+    public void setUp() throws Exception {
+        MockitoAnnotations.initMocks(this);
+
+        recipeService = new RecipeServiceImpl(recipeReactiveRepository, recipeCommandToRecipe, recipeToRecipeCommand);
+    }
+
     @Test
-    public void testSaveOfDescription() throws Exception {
+    public void getRecipeByIdTest() throws Exception {
+        Recipe recipe = new Recipe();
+        recipe.setId("1");
+
+        when(recipeReactiveRepository.findById(anyString())).thenReturn(Mono.just(recipe));
+
+        Recipe recipeReturned = recipeService.findById("1").block();
+
+        assertNotNull("Null recipe returned", recipeReturned);
+        verify(recipeReactiveRepository, times(1)).findById(anyString());
+        verify(recipeReactiveRepository, never()).findAll();
+    }
+
+
+    @Test
+    public void getRecipeCommandByIdTest() throws Exception {
+        Recipe recipe = new Recipe();
+        recipe.setId("1");
+
+        when(recipeReactiveRepository.findById(anyString())).thenReturn(Mono.just(recipe));
+
+        RecipeCommand recipeCommand = new RecipeCommand();
+        recipeCommand.setId("1");
+
+        when(recipeToRecipeCommand.convert(any())).thenReturn(recipeCommand);
+
+        RecipeCommand commandById = recipeService.findCommandById("1").block();
+
+        assertNotNull("Null recipe returned", commandById);
+        verify(recipeReactiveRepository, times(1)).findById(anyString());
+        verify(recipeReactiveRepository, never()).findAll();
+    }
+
+    @Test
+    public void getRecipesTest() throws Exception {
+
+        Recipe recipe = new Recipe();
+        HashSet receipesData = new HashSet();
+        receipesData.add(recipe);
+
+        when(recipeService.getRecipes()).thenReturn(Flux.just(recipe));
+
+        List<Recipe> recipes = recipeService.getRecipes().collectList().block();
+
+        assertEquals(recipes.size(), 1);
+        verify(recipeReactiveRepository, times(1)).findAll();
+        verify(recipeReactiveRepository, never()).findById(anyString());
+    }
+
+    @Test
+    public void testDeleteById() throws Exception {
+
         //given
-        Iterable<Recipe> recipes = recipeRepository.findAll();
-        Recipe testRecipe = recipes.iterator().next();
-        RecipeCommand testRecipeCommand = recipeToRecipeCommand.convert(testRecipe);
+        String idToDelete = "2";
+
+        when(recipeReactiveRepository.deleteById(anyString())).thenReturn(Mono.empty());
 
         //when
-        testRecipeCommand.setDescription(NEW_DESCRIPTION);
-        RecipeCommand savedRecipeCommand = recipeService.saveRecipeCommand(testRecipeCommand);
+        recipeService.deleteById(idToDelete);
 
         //then
-        assertEquals(NEW_DESCRIPTION, savedRecipeCommand.getDescription());
-        assertEquals(testRecipe.getId(), savedRecipeCommand.getId());
-        assertEquals(testRecipe.getCategories().size(), savedRecipeCommand.getCategories().size());
-        assertEquals(testRecipe.getIngredients().size(), savedRecipeCommand.getIngredients().size());
+        verify(recipeReactiveRepository, times(1)).deleteById(anyString());
     }
 }
